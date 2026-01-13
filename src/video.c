@@ -7,8 +7,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "vdp.h"
 #include "video.h"
+
+#include "vdp.h"
 
 /* sdl window, renderer, etc */
 static SDL_Window*   S_video_sdl_window;
@@ -25,6 +26,9 @@ static short  S_video_window_size_table[2 * VIDEO_NUM_WINDOW_SIZES] =
                 1366,  768, 
                 1920, 1080 
               };
+
+#define VIDEO_FB_TEXTURE_W 512
+#define VIDEO_FB_TEXTURE_H 256
 
 /*******************************************************************************
 ** video_init()
@@ -75,10 +79,10 @@ short int video_init()
 
   /* create the framebuffer texture */
   S_video_sdl_frame_texture = SDL_CreateTexture(S_video_sdl_renderer,
-                                                SDL_PIXELFORMAT_RGB24,
+                                                SDL_PIXELFORMAT_RGB555,
                                                 SDL_TEXTUREACCESS_STREAMING,
-                                                VDP_FRAMEBUFFER_W, 
-                                                VDP_FRAMEBUFFER_H);
+                                                VIDEO_FB_TEXTURE_W, 
+                                                VIDEO_FB_TEXTURE_H);
 
   if (S_video_sdl_frame_texture == NULL)
   {
@@ -111,8 +115,6 @@ short int video_deinit()
 *******************************************************************************/
 short int video_display_frame()
 {
-  int k;
-
   SDL_Rect screen_rect;
 
   /* setup rectangle */
@@ -120,14 +122,6 @@ short int video_display_frame()
   screen_rect.y = 0;
   screen_rect.w = VDP_SCREEN_W;
   screen_rect.h = VDP_SCREEN_H;
-
-  /* apply brightness adjustment */
-  for (k = 0; k < VDP_FRAMEBUFFER_SIZE; k++)
-  {
-    G_vdp_fb_rgb[3 * k + 0] += 16;
-    G_vdp_fb_rgb[3 * k + 1] += 16;
-    G_vdp_fb_rgb[3 * k + 2] += 16;
-  }
 
   /* clear screen */
   SDL_SetRenderDrawColor(S_video_sdl_renderer, 0, 0, 0, 255);
@@ -137,7 +131,7 @@ short int video_display_frame()
   SDL_UpdateTexture(S_video_sdl_frame_texture, 
                     &screen_rect, 
                     G_vdp_fb_rgb, 
-                    VDP_FRAMEBUFFER_W * sizeof (unsigned char) * 3);
+                    VDP_SCREEN_W * sizeof (unsigned short));
 
   SDL_RenderCopy( S_video_sdl_renderer, 
                   S_video_sdl_frame_texture, 

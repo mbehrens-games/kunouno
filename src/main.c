@@ -6,8 +6,7 @@
 
 #include <stdio.h>
 
-#include "cart.h"
-
+#include "rom.h"
 #include "vdp.h"
 #include "video.h"
 
@@ -51,11 +50,13 @@ int main(int argc, char *argv[])
   video_increase_window_size();
 
   /* load test cart file */
-  if (cart_load("test.kn1"))
+  if (rom_load("test.kn1"))
   {
     fprintf(stdout, "Failed to load test cart data. Exiting...\n");
     goto cleanup_all;
   }
+
+  vdp_load_sprite(0);
 
   /* initialize ticks */
   ticks_current = SDL_GetTicks();

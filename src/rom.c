@@ -1,0 +1,258 @@
+/******************************************************************************/
+/* rom.c (faux game cartridge)                                                */
+/******************************************************************************/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+
+#include "rom.h"
+
+/* top level table format:                                */
+/* number of folders (16 bit value) -> 2 bytes            */
+/* 1 entry per folder (24 bit address & size) -> 6 bytes  */
+/* addresses are absolute (from start of the rom)         */
+
+/* folder table format:                                               */
+/* number of files (16 bit value) -> 2 bytes                          */
+/* 1 entry per file (12 byte name, 24 bit address & size) -> 18 bytes */
+/* addresses are relative (from start of folder table)                */
+#define ROM_TOP_LEVEL_TABLE_SIZE()                                             \
+  (2 + (6 * ROM_NUM_FOLDERS))
+
+#define ROM_FOLDER_TABLE_SIZE(num_files)                                       \
+  (2 + (18 * num_files))
+
+#define ROM_FOLDER_ENTRY_LOC(folder)                                           \
+  (2 + (6 * (folder)) + 0)
+
+#define ROM_FOLDER_ADDR_LOC(folder)                                            \
+  (2 + (6 * (folder)) + 0)
+
+#define ROM_FOLDER_SIZE_LOC(folder)                                            \
+  (2 + (6 * (folder)) + 3)
+
+#define ROM_FILE_ENTRY_LOC(file)                                               \
+  (2 + (18 * (file)) + 0)
+
+#define ROM_FILE_NAME_LOC(file)                                                \
+  (2 + (18 * (file)) + 0)
+
+#define ROM_FILE_ADDR_LOC(file)                                                \
+  (2 + (18 * (file)) + 12)
+
+#define ROM_FILE_SIZE_LOC(file)                                                \
+  (2 + (18 * (file)) + 15)
+
+#define ROM_READ_16BE(val, addr)                                               \
+  (val) = (G_rom_data[(addr) + 0] << 8) & 0xFF00;                              \
+  (val) |= G_rom_data[(addr) + 1] & 0x00FF;
+
+#define ROM_READ_24BE(val, addr)                                               \
+  (val) =  (G_rom_data[(addr) + 0] << 16) & 0xFF0000;                          \
+  (val) |= (G_rom_data[(addr) + 1] << 8) & 0x00FF00;                           \
+  (val) |=  G_rom_data[(addr) + 2] & 0x0000FF;
+
+unsigned char G_rom_data[ROM_MAX_BYTES];
+unsigned long G_rom_size;
+
+/******************************************************************************/
+/* rom_clear()                                                                */
+/******************************************************************************/
+int rom_clear()
+{
+  int k;
+
+  /* zero out the bytes */
+  for (k = 0; k < ROM_MAX_BYTES; k++)
+    G_rom_data[k] = 0x00;
+
+  G_rom_size = 0;
+
+  return 0;
+}
+
+/******************************************************************************/
+/* rom_validate()                                                             */
+/******************************************************************************/
+int rom_validate()
+{
+  int k;
+  int m;
+
+  unsigned short num_folders;
+  unsigned short num_files;
+
+  unsigned long folder_addr;
+  unsigned long folder_size;
+
+  unsigned long file_addr;
+  unsigned long file_size;
+
+  unsigned long rom_accum;
+  unsigned long folder_accum;
+
+  /* make sure the file table is accurate */
+  ROM_READ_16BE(num_folders, 0)
+
+  if (num_folders != ROM_NUM_FOLDERS)
+    return 1;
+
+  /* the rom accumulator adds up the folder sizes,  */
+  /* and should end up equaling the size of the rom */
+  rom_accum = ROM_TOP_LEVEL_TABLE_SIZE();
+
+  for (k = 0; k < ROM_NUM_FOLDERS; k++)
+  {
+    ROM_READ_24BE(folder_addr, ROM_FOLDER_ADDR_LOC(k))
+    ROM_READ_24BE(folder_size, ROM_FOLDER_SIZE_LOC(k))
+
+    if (folder_addr != rom_accum)
+      return 1; 
+
+    ROM_READ_16BE(num_files, folder_addr + 0)
+
+    /* the folder accumulator adds up the file sizes,     */
+    /* and should end up equaling the size of the folder  */
+    folder_accum = ROM_FOLDER_TABLE_SIZE(num_files);
+
+    for (m = 0; m < num_files; m++)
+    {
+      ROM_READ_24BE(file_addr, folder_addr + ROM_FILE_ADDR_LOC(m))
+      ROM_READ_24BE(file_size, folder_addr + ROM_FILE_SIZE_LOC(m))
+
+      if (file_addr != folder_accum)
+        return 1;
+
+      folder_accum += file_size;
+    }
+
+    if (folder_accum != folder_size)
+      return 1;
+
+    rom_accum += folder_size;
+  }
+
+  if (rom_accum != G_rom_size)
+    return 1;
+
+  return 0;
+}
+
+/******************************************************************************/
+/* rom_lookup_file()                                                          */
+/******************************************************************************/
+int rom_lookup_file(int folder, unsigned short index, 
+                    unsigned long* abs_addr_cb, unsigned long* num_bytes_cb)
+{
+  unsigned long folder_addr;
+  unsigned long file_addr;
+  unsigned long file_size;
+
+  unsigned short num_files;
+
+  /* check input variables */
+  if ((folder < 0) || (folder >= ROM_NUM_FOLDERS))
+    return 1;
+
+  if ((abs_addr_cb == NULL) || (num_bytes_cb == NULL))
+    return 1;
+
+  /* read folder address from top level table */
+  ROM_READ_24BE(folder_addr, ROM_FOLDER_ADDR_LOC(folder))
+
+  /* read number of files */
+  ROM_READ_16BE(num_files, folder_addr + 0)
+
+  /* make sure the index is valid */
+  if (index >= num_files) 
+    return 1;
+
+  /* get file address and size */
+  ROM_READ_24BE(file_addr, folder_addr + ROM_FILE_ADDR_LOC(index))
+  ROM_READ_24BE(file_size, folder_addr + ROM_FILE_SIZE_LOC(index))
+
+  /* set values of callback variables and return */
+  *abs_addr_cb = folder_addr + file_addr;
+  *num_bytes_cb = file_size;
+
+  return 0;
+}
+
+/******************************************************************************/
+/* rom_load()                                                                 */
+/******************************************************************************/
+int rom_load(char* filename)
+{
+  FILE* fp;
+
+  char signature[8];
+  char type[4];
+
+  struct stat file_stat;
+
+  unsigned long rom_bytes;
+
+  /* make sure filename is valid */
+  if (filename == NULL)
+    return 1;
+
+  /* determine rom size */
+  if (stat(filename, &file_stat) != 0)
+    return 1;
+
+  if (file_stat.st_size <= 12)
+    return 1;
+
+  rom_bytes = file_stat.st_size - 12;
+
+  /* open the file */
+  fp = fopen(filename, "rb");
+
+  if (fp == NULL)
+    return 1;
+
+  /* read cart header */
+  if (fread(signature, sizeof(char), 8, fp) < 8)
+    return 1;
+
+  if ((signature[0] != 'K') || 
+      (signature[1] != 'U') || 
+      (signature[2] != 'N') || 
+      (signature[3] != 'O') || 
+      (signature[4] != 'I') || 
+      (signature[5] != 'C') || 
+      (signature[6] != 'H') || 
+      (signature[7] != 'I'))
+  {
+    return 1;
+  }
+
+  if (fread(type, sizeof(char), 4, fp) < 4)
+    return 1;
+
+  if ((type[0] != 'C') || 
+      (type[1] != 'A') || 
+      (type[2] != 'R') || 
+      (type[3] != 'T')) 
+  {
+    return 1;
+  }
+
+  /* read rom data */
+  if (fread(&G_rom_data[0], sizeof(unsigned char), rom_bytes, fp) < rom_bytes)
+    return 1;
+
+  G_rom_size = rom_bytes;
+
+  /* close the file */
+  fclose(fp);
+
+  /* make sure the rom is valid */
+  if (rom_validate())
+    return 1;
+
+  return 0;
+}
+
