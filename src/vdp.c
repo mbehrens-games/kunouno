@@ -10,29 +10,43 @@
 
 #include "rom.h"
 
-/* palettes */
-unsigned short G_vdp_sprite_pals[VDP_PALS_SIZE];
-short          G_vdp_sprite_pal_count;
-
-unsigned short G_vdp_tile_pals[VDP_PALS_SIZE];
-short          G_vdp_tile_pal_count;
-
-/* cells */
-unsigned char  G_vdp_sprite_cells[VDP_CELLS_SIZE];
-short          G_vdp_sprite_cell_count;
-
-unsigned char  G_vdp_tile_cells[VDP_CELLS_SIZE];
-short          G_vdp_tile_cell_count;
-
-/* table entries */
-unsigned short G_vdp_sprite_entries[VDP_ENTRIES_SIZE];
-short          G_vdp_sprite_entry_count;
-
-unsigned short G_vdp_tile_entries[VDP_ENTRIES_SIZE];
-short          G_vdp_tile_entry_count;
-
 /* framebuffer */
 unsigned short G_vdp_fb_rgb[VDP_SCREEN_SIZE];
+
+/* palettes */
+#define VDP_COLORS_PER_PAL  16
+#define VDP_NUM_PALS        16
+#define VDP_PALS_SIZE       (VDP_COLORS_PER_PAL * VDP_NUM_PALS)
+
+static unsigned short S_vdp_pals[VDP_PALS_SIZE];
+static short          S_vdp_pal_count;
+
+/* cells */
+#define VDP_CELL_W_H        8
+#define VDP_PIXELS_PER_CELL (VDP_CELL_W_H * VDP_CELL_W_H)  /* 8x8 */
+#define VDP_BYTES_PER_CELL  (VDP_PIXELS_PER_CELL / 2)
+
+#define VDP_NUM_CELLS       (4 * 1024)
+#define VDP_CELLS_SIZE      (VDP_BYTES_PER_CELL * VDP_NUM_CELLS)  /* 128 KB */
+
+static unsigned char  S_vdp_cells[VDP_CELLS_SIZE];
+static short          S_vdp_cell_count;
+
+/* table entries */
+#define VDP_VALS_PER_SPRITE 3
+#define VDP_NUM_SPRITES     1024
+#define VDP_SPRITES_SIZE    (VDP_VALS_PER_SPRITE * VDP_NUM_SPRITES)
+
+static unsigned short S_vdp_sprites[VDP_SPRITES_SIZE];
+static short          S_vdp_sprite_count;
+
+/* tiles */
+#define VDP_VALS_PER_TILE   3
+#define VDP_NUM_TILES       1024
+#define VDP_TILES_SIZE      (VDP_VALS_PER_TILE * VDP_NUM_TILES)
+
+static unsigned short S_vdp_tiles[VDP_TILES_SIZE];
+static short          S_vdp_tile_count;
 
 /* layers */
 #define VDP_LAYER_W 512
@@ -50,39 +64,33 @@ int vdp_reset()
 {
   int k;
 
-  /* palettes */
-  for (k = 0; k < VDP_PALS_SIZE; k++)
-  {
-    G_vdp_sprite_pals[k] = 0x0000;
-    G_vdp_tile_pals[k] = 0x0000;
-  }
-
-  G_vdp_sprite_pal_count = 0;
-  G_vdp_tile_pal_count = 0;
-
-  /* cells */
-  for (k = 0; k < VDP_CELLS_SIZE; k++)
-  {
-    G_vdp_sprite_cells[k] = 0x00;
-    G_vdp_tile_cells[k] = 0x00;
-  }
-
-  G_vdp_sprite_cell_count = 0;
-  G_vdp_tile_cell_count = 0;
-
-  /* table entries */
-  for (k = 0; k < VDP_ENTRIES_SIZE; k++)
-  {
-    G_vdp_sprite_entries[k] = 0x0000;
-    G_vdp_tile_entries[k] = 0x0000;
-  }
-
-  G_vdp_sprite_entry_count = 0;
-  G_vdp_tile_entry_count = 0;
-
   /* framebuffer */
   for (k = 0; k < VDP_SCREEN_SIZE; k++)
     G_vdp_fb_rgb[k] = 0x0000;
+
+  /* palettes */
+  for (k = 0; k < VDP_PALS_SIZE; k++)
+    S_vdp_pals[k] = 0x0000;
+
+  S_vdp_pal_count = 0;
+
+  /* cells */
+  for (k = 0; k < VDP_CELLS_SIZE; k++)
+    S_vdp_cells[k] = 0x00;
+
+  S_vdp_cell_count = 0;
+
+  /* sprites */
+  for (k = 0; k < VDP_SPRITES_SIZE; k++)
+    S_vdp_sprites[k] = 0x00;
+
+  S_vdp_sprite_count = 0;
+
+  /* tiles */
+  for (k = 0; k < VDP_TILES_SIZE; k++)
+    S_vdp_tiles[k] = 0x00;
+
+  S_vdp_tile_count = 0;
 
   /* layers */
   for (k = 0; k < VDP_LAYER_SIZE; k++)
@@ -97,11 +105,13 @@ int vdp_reset()
 /******************************************************************************/
 /* vdp_load_sprite()                                                          */
 /******************************************************************************/
-int vdp_load_sprite(unsigned short sprite_index)
+int vdp_load_sprite(unsigned short sprite_number)
 {
   int k;
 
-  unsigned long  abs_addr;
+  unsigned short val;
+
+  unsigned long  rom_addr;
   unsigned long  num_bytes;
 
   unsigned short num_rows;
@@ -109,83 +119,82 @@ int vdp_load_sprite(unsigned short sprite_index)
   unsigned short num_frames;
   unsigned short delay_time;
 
-  unsigned short pal_index;
-  unsigned short cell_index;
-  unsigned short entry_index;
+  unsigned short num_cells;
+
+  unsigned long  pal_addr;
+  unsigned long  cell_addr;
+  unsigned long  sprite_addr;
 
   unsigned short pal_colors[VDP_COLORS_PER_PAL];
 
-  unsigned short num_cells;
-
   /* get the file address and size in the rom */
-  rom_lookup_file(ROM_FOLDER_SPRITES, sprite_index, &abs_addr, &num_bytes);
-
-  printf("Sprite Absolute Address: %ld, Size: %ld\n", abs_addr, num_bytes);
+  rom_lookup_file(ROM_FOLDER_SPRITES, sprite_number, &rom_addr, &num_bytes);
 
   /* read sprite header */
-  num_columns = ((G_rom_data[abs_addr + 0] >> 4) & 0x0F) + 1;
-  num_rows = (G_rom_data[abs_addr + 0] & 0x0F) + 1;
-  num_frames = ((G_rom_data[abs_addr + 1] >> 4) & 0x0F) + 1;
+  num_columns = ((G_rom_data[rom_addr + 0] >> 4) & 0x0F) + 1;
+  num_rows = (G_rom_data[rom_addr + 0] & 0x0F) + 1;
+  num_frames = ((G_rom_data[rom_addr + 1] >> 4) & 0x0F) + 1;
 
-  delay_time = (G_rom_data[abs_addr + 2] << 8) & 0xFF00;
-  delay_time |= G_rom_data[abs_addr + 3] & 0x00FF;
+  delay_time = (G_rom_data[rom_addr + 2] << 8) & 0xFF00;
+  delay_time |= G_rom_data[rom_addr + 3] & 0x00FF;
   delay_time *= 10;
 
-  printf( "Sprite Num Frames: %d, Columns: %d, Rows: %d, Delay: %d\n", 
-          num_frames, num_columns, num_rows, delay_time);
+  rom_addr += 4;
+  num_bytes -= 4;
 
   /* read palette */
   for (k = 0; k < VDP_COLORS_PER_PAL; k++)
   {
-    pal_colors[k] = (G_rom_data[abs_addr + 4 + (2 * k + 0)] << 8) & 0x7F00;
-    pal_colors[k] |= G_rom_data[abs_addr + 4 + (2 * k + 1)] & 0x00FF;
-
-    printf( "Palette Color %d: %d (%d, %d, %d)\n", k, pal_colors[k], 
-            (pal_colors[k] >> 10) & 0x1F, (pal_colors[k] >> 5) & 0x1F, pal_colors[k] & 0x1F);
+    pal_colors[k] = (G_rom_data[rom_addr + (2 * k + 0)] << 8) & 0x7F00;
+    pal_colors[k] |= G_rom_data[rom_addr + (2 * k + 1)] & 0x00FF;
   }
 
+  rom_addr += 2 * VDP_COLORS_PER_PAL;
+  num_bytes -= 2 * VDP_COLORS_PER_PAL;
+
   /* copy palette */
-  if ((G_vdp_sprite_pal_count + 1) >= VDP_NUM_PALS)
+  if ((S_vdp_pal_count + 1) >= VDP_NUM_PALS)
     return 1;
 
-  pal_index = G_vdp_sprite_pal_count;
+  pal_addr = S_vdp_pal_count * VDP_COLORS_PER_PAL;
 
-  memcpy( &G_vdp_sprite_pals[pal_index * VDP_COLORS_PER_PAL + 0], 
-          &pal_colors[0], 
+  memcpy( &S_vdp_pals[pal_addr], &pal_colors[0], 
           sizeof(unsigned short) * VDP_COLORS_PER_PAL);
 
-  G_vdp_sprite_pal_count += 1;
+  S_vdp_pal_count += 1;
 
   /* copy cells */
   num_cells = num_columns * num_rows * num_frames;
 
-  if ((G_vdp_sprite_cell_count + num_cells) >= VDP_NUM_CELLS)
+  if ((S_vdp_cell_count + num_cells) >= VDP_NUM_CELLS)
     return 1;
 
-  cell_index = G_vdp_sprite_cell_count;
+  cell_addr = S_vdp_cell_count * VDP_BYTES_PER_CELL;
 
-  memcpy( &G_vdp_sprite_cells[cell_index * VDP_BYTES_PER_CELL + 0], 
-          &G_rom_data[abs_addr + 4 + (2 * 16) + 0], 
+  memcpy( &S_vdp_cells[cell_addr], &G_rom_data[rom_addr], 
           num_cells * VDP_BYTES_PER_CELL);
 
-  G_vdp_sprite_cell_count += num_cells;
+  S_vdp_cell_count += num_cells;
 
-  /* create table entry */
-  if ((G_vdp_sprite_entry_count + 1) >= VDP_NUM_ENTRIES)
+  /* create sprite table entry */
+  if ((S_vdp_sprite_count + 1) >= VDP_NUM_SPRITES)
     return 1;
 
-  entry_index = G_vdp_sprite_entry_count;
+  sprite_addr = S_vdp_sprite_count * VDP_VALS_PER_SPRITE;
 
-  G_vdp_sprite_entries[entry_index * VDP_VALS_PER_ENTRY + 0] = ((num_columns - 1) << 12) & 0xF000;
-  G_vdp_sprite_entries[entry_index * VDP_VALS_PER_ENTRY + 0] |= ((num_rows - 1) << 8) & 0x0F00;
-  G_vdp_sprite_entries[entry_index * VDP_VALS_PER_ENTRY + 0] |= ((num_frames - 1) << 4) & 0x00F0;
+  val = ((num_columns - 1) << 12) & 0xF000;
+  val |= ((num_rows - 1) << 8) & 0x0F00;
+  val |= ((num_frames - 1) << 4) & 0x00F0;
+  S_vdp_sprites[sprite_addr + 0] = val;
 
-  G_vdp_sprite_entries[entry_index * VDP_VALS_PER_ENTRY + 1] = delay_time;
+  val = delay_time;
+  S_vdp_sprites[sprite_addr + 1] = val;
 
-  G_vdp_sprite_entries[entry_index * VDP_VALS_PER_ENTRY + 2] = (pal_index << 12) & 0xF000;
-  G_vdp_sprite_entries[entry_index * VDP_VALS_PER_ENTRY + 2] |= cell_index & 0x0FFF;
+  val = ((pal_addr / VDP_COLORS_PER_PAL) << 12) & 0xF000;
+  val |= (cell_addr / VDP_BYTES_PER_CELL) & 0x0FFF;
+  S_vdp_sprites[sprite_addr + 2] = val;
 
-  G_vdp_sprite_entry_count += 1;
+  S_vdp_sprite_count += 1;
 
   return 0;
 }
@@ -195,87 +204,81 @@ int vdp_load_sprite(unsigned short sprite_index)
 /******************************************************************************/
 int vdp_draw_frame()
 {
-  int k;
   int m;
+  int n;
 
   unsigned short val;
+
+  unsigned long  sprite_addr;
 
   unsigned short num_rows;
   unsigned short num_columns;
   unsigned short num_frames;
-  unsigned short num_cells;
+  unsigned short delay_time;
 
   unsigned short thing_pos_x;
   unsigned short thing_pos_y;
 
-  unsigned short pal_addr;
-  unsigned short pal_offset;
+  unsigned long  pal_addr;
+  unsigned long  pal_offset;
 
-  unsigned long cell_addr;
-  unsigned long cell_offset;
+  unsigned long  cell_addr;
+  unsigned long  cell_offset;
 
-  unsigned long pixel_addr;
-  unsigned long pixel_offset;
-
-  unsigned short sprite_index;
-  unsigned short pal_index;
-  unsigned short cell_index;
+  unsigned long  pixel_addr;
+  unsigned long  pixel_offset;
 
   /* clear framebuffer */
-  for (k = 0; k < VDP_SCREEN_SIZE; k++)
-    G_vdp_fb_rgb[k] = 0x0000;
+  for (m = 0; m < VDP_SCREEN_SIZE; m++)
+    G_vdp_fb_rgb[m] = 0x0000;
 
   /* test: draw the test sprite */
-  sprite_index = 0;
+  sprite_addr = 0 * VDP_VALS_PER_SPRITE;
 
-  val = G_vdp_sprite_entries[sprite_index * VDP_VALS_PER_ENTRY + 0];
+  val = S_vdp_sprites[sprite_addr + 0];
 
   num_columns = ((val >> 12) & 0x000F) + 1;
   num_rows = ((val >> 8) & 0x000F) + 1;
   num_frames = ((val >> 4) & 0x000F) + 1;
 
-  num_cells = num_rows * num_columns;
+  val = S_vdp_sprites[sprite_addr + 1];
 
-  val = G_vdp_sprite_entries[sprite_index * VDP_VALS_PER_ENTRY + 2];
+  delay_time = val;
 
-  pal_index = (val >> 12) & 0x000F;
-  cell_index = val & 0x0FFF;
+  val = S_vdp_sprites[sprite_addr + 2];
 
-  num_cells = num_rows * num_columns;
-
+  pal_addr = VDP_COLORS_PER_PAL * ((val >> 12) & 0x000F);
+  cell_addr = VDP_BYTES_PER_CELL * (val & 0x0FFF);
+  
   thing_pos_x = 128;
   thing_pos_y = 64;
 
-  pal_addr = VDP_COLORS_PER_PAL * pal_index;
-  
-  for (k = 0; k < num_cells; k++)
+  for (m = 0; m < num_rows * num_columns; m++)
   {
-    /* determine cell & pixel positions */
-    cell_addr = VDP_BYTES_PER_CELL * (cell_index + k);
-
+    /* determine pixel address */
     pixel_addr = VDP_SCREEN_W * thing_pos_y + thing_pos_x;
-    pixel_addr += VDP_SCREEN_W * VDP_CELL_W_H * (k / num_columns);
-    pixel_addr += VDP_CELL_W_H * (k % num_columns);
+    pixel_addr += VDP_SCREEN_W * VDP_CELL_W_H * (m / num_columns);
+    pixel_addr += VDP_CELL_W_H * (m % num_columns);
 
-    for (m = 0; m < VDP_PIXELS_PER_CELL; m++)
+    for (n = 0; n < VDP_PIXELS_PER_CELL; n++)
     {
       /* determine cell & pixel offsets */
-      cell_offset = m / 2;
+      cell_offset = (VDP_BYTES_PER_CELL * m) + (n / 2);
 
-      pixel_offset = VDP_SCREEN_W * (m / VDP_CELL_W_H);
-      pixel_offset += m % VDP_CELL_W_H;
+      pixel_offset = VDP_SCREEN_W * (n / VDP_CELL_W_H);
+      pixel_offset += n % VDP_CELL_W_H;
 
       /* read palette offset from cell */
-      if (m % 2 == 0)
-        pal_offset = (G_vdp_sprite_cells[cell_addr + cell_offset] >> 4) & 0x0F;
+      if (n % 2 == 0)
+        pal_offset = (S_vdp_cells[cell_addr + cell_offset] >> 4) & 0x0F;
       else
-        pal_offset = G_vdp_sprite_cells[cell_addr + cell_offset] & 0x0F;
+        pal_offset = S_vdp_cells[cell_addr + cell_offset] & 0x0F;
 
       /* write pixel to the frame buffer */
       if (pal_offset == 0)
         continue;
 
-      val = G_vdp_sprite_pals[pal_addr + pal_offset];
+      val = S_vdp_pals[pal_addr + pal_offset];
 
       G_vdp_fb_rgb[pixel_addr + pixel_offset] = val;
     }

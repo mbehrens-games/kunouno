@@ -22,7 +22,7 @@ int rom_clear();
 int rom_validate();
 
 int rom_lookup_file(int folder, unsigned short index, 
-                    unsigned long* abs_addr_cb, unsigned long* num_bytes_cb);
+                    unsigned long* rom_addr_cb, unsigned long* num_bytes_cb);
 
 int rom_load(char* filename);
 
