@@ -9,41 +9,26 @@
 
 #include "rom.h"
 
-/* top level table format:                                */
-/* number of folders (16 bit value) -> 2 bytes            */
-/* 1 entry per folder (24 bit address & size) -> 6 bytes  */
-/* addresses are absolute (from start of the rom)         */
+/* file table format:                                     */
+/* number of entries (16 bit value) -> 2 bytes            */
+/* each entry (24 bit address & size) -> 6 bytes          */
+/* addresses are relative (from start of the file table)  */
+#define ROM_TABLE_COUNT_BYTES 2
+#define ROM_TABLE_ENTRY_BYTES 6
+#define ROM_ENTRY_ADDR_OFFSET 0
+#define ROM_ENTRY_SIZE_OFFSET 3
 
-/* folder table format:                                               */
-/* number of files (16 bit value) -> 2 bytes                          */
-/* 1 entry per file (12 byte name, 24 bit address & size) -> 18 bytes */
-/* addresses are relative (from start of folder table)                */
-#define ROM_TOP_LEVEL_TABLE_SIZE()                                             \
-  (2 + (6 * ROM_NUM_FOLDERS))
+#define ROM_FILE_TABLE_SIZE(num_entries)                                       \
+  (ROM_TABLE_COUNT_BYTES + (ROM_TABLE_ENTRY_BYTES * num_entries))
 
-#define ROM_FOLDER_TABLE_SIZE(num_files)                                       \
-  (2 + (18 * num_files))
+#define ROM_FILE_ENTRY_LOC(entry)                                              \
+  (ROM_TABLE_COUNT_BYTES + (ROM_TABLE_ENTRY_BYTES * (entry)) + 0)
 
-#define ROM_FOLDER_ENTRY_LOC(folder)                                           \
-  (2 + (6 * (folder)) + 0)
+#define ROM_FILE_ADDR_LOC(entry)                                               \
+  (ROM_TABLE_COUNT_BYTES + (ROM_TABLE_ENTRY_BYTES * (entry)) + ROM_ENTRY_ADDR_OFFSET)
 
-#define ROM_FOLDER_ADDR_LOC(folder)                                            \
-  (2 + (6 * (folder)) + 0)
-
-#define ROM_FOLDER_SIZE_LOC(folder)                                            \
-  (2 + (6 * (folder)) + 3)
-
-#define ROM_FILE_ENTRY_LOC(file)                                               \
-  (2 + (18 * (file)) + 0)
-
-#define ROM_FILE_NAME_LOC(file)                                                \
-  (2 + (18 * (file)) + 0)
-
-#define ROM_FILE_ADDR_LOC(file)                                                \
-  (2 + (18 * (file)) + 12)
-
-#define ROM_FILE_SIZE_LOC(file)                                                \
-  (2 + (18 * (file)) + 15)
+#define ROM_FILE_SIZE_LOC(entry)                                               \
+  (ROM_TABLE_COUNT_BYTES + (ROM_TABLE_ENTRY_BYTES * (entry)) + ROM_ENTRY_SIZE_OFFSET)
 
 #define ROM_READ_16BE(val, addr)                                               \
   (val) = (G_rom_data[(addr) + 0] << 8) & 0xFF00;                              \
@@ -101,12 +86,12 @@ int rom_validate()
 
   /* the rom accumulator adds up the folder sizes,  */
   /* and should end up equaling the size of the rom */
-  rom_accum = ROM_TOP_LEVEL_TABLE_SIZE();
+  rom_accum = ROM_FILE_TABLE_SIZE(ROM_NUM_FOLDERS);
 
   for (k = 0; k < ROM_NUM_FOLDERS; k++)
   {
-    ROM_READ_24BE(folder_addr, ROM_FOLDER_ADDR_LOC(k))
-    ROM_READ_24BE(folder_size, ROM_FOLDER_SIZE_LOC(k))
+    ROM_READ_24BE(folder_addr, ROM_FILE_ADDR_LOC(k))
+    ROM_READ_24BE(folder_size, ROM_FILE_SIZE_LOC(k))
 
     if (folder_addr != rom_accum)
       return 1; 
@@ -115,7 +100,7 @@ int rom_validate()
 
     /* the folder accumulator adds up the file sizes,     */
     /* and should end up equaling the size of the folder  */
-    folder_accum = ROM_FOLDER_TABLE_SIZE(num_files);
+    folder_accum = ROM_FILE_TABLE_SIZE(num_files);
 
     for (m = 0; m < num_files; m++)
     {
@@ -160,10 +145,10 @@ int rom_lookup_file(int folder, unsigned short index,
     return 1;
 
   /* read folder address from top level table */
-  ROM_READ_24BE(folder_addr, ROM_FOLDER_ADDR_LOC(folder))
+  ROM_READ_24BE(folder_addr, ROM_FILE_ADDR_LOC(folder))
 
   /* read number of files */
-  ROM_READ_16BE(num_files, folder_addr + 0)
+  ROM_READ_16BE(num_files, folder_addr)
 
   /* make sure the index is valid */
   if (index >= num_files) 

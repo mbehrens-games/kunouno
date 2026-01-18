@@ -12,7 +12,9 @@ extern unsigned long G_rom_size;
 
 enum
 {
-  ROM_FOLDER_SPRITES = 0, 
+  ROM_FOLDER_PALS = 0, 
+  ROM_FOLDER_CELLS, 
+  ROM_FOLDER_SPRITES, 
   ROM_FOLDER_TILES, 
   ROM_NUM_FOLDERS
 };
