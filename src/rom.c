@@ -128,7 +128,7 @@ int rom_validate()
 /******************************************************************************/
 /* rom_lookup_file()                                                          */
 /******************************************************************************/
-int rom_lookup_file(int folder, unsigned short index, 
+int rom_lookup_file(int folder, unsigned short file_number, 
                     unsigned long* rom_addr_cb, unsigned long* num_bytes_cb)
 {
   unsigned long folder_addr;
@@ -151,12 +151,12 @@ int rom_lookup_file(int folder, unsigned short index,
   ROM_READ_16BE(num_files, folder_addr)
 
   /* make sure the index is valid */
-  if (index >= num_files) 
+  if (file_number >= num_files) 
     return 1;
 
   /* get file address and size */
-  ROM_READ_24BE(file_addr, folder_addr + ROM_FILE_ADDR_LOC(index))
-  ROM_READ_24BE(file_size, folder_addr + ROM_FILE_SIZE_LOC(index))
+  ROM_READ_24BE(file_addr, folder_addr + ROM_FILE_ADDR_LOC(file_number))
+  ROM_READ_24BE(file_size, folder_addr + ROM_FILE_SIZE_LOC(file_number))
 
   /* set values of callback variables and return */
   *rom_addr_cb = folder_addr + file_addr;

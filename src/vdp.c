@@ -33,7 +33,7 @@ static unsigned char  S_vdp_cells[VDP_CELLS_SIZE];
 static short          S_vdp_cell_count;
 
 /* sprites */
-#define VDP_VALS_PER_SPRITE 3
+#define VDP_VALS_PER_SPRITE 5
 #define VDP_NUM_SPRITES     1024
 #define VDP_SPRITES_SIZE    (VDP_VALS_PER_SPRITE * VDP_NUM_SPRITES)
 
@@ -41,7 +41,7 @@ static unsigned short S_vdp_sprites[VDP_SPRITES_SIZE];
 static short          S_vdp_sprite_count;
 
 /* tiles */
-#define VDP_VALS_PER_TILE   3
+#define VDP_VALS_PER_TILE   5
 #define VDP_NUM_TILES       1024
 #define VDP_TILES_SIZE      (VDP_VALS_PER_TILE * VDP_NUM_TILES)
 
@@ -103,17 +103,45 @@ int vdp_reset()
 }
 
 /******************************************************************************/
-/* vdp_load_palette()                                                         */
+/* vdp_load_palette_from_last_sprite()                                        */
 /******************************************************************************/
-int vdp_load_palette(unsigned short pal_number)
+int vdp_load_palette_from_last_sprite()
 {
   int k;
 
   unsigned long  rom_addr;
   unsigned long  num_bytes;
 
-  unsigned long  pal_addr;
+  unsigned short sprite_index;
+  unsigned short sprite_addr;
+
+  unsigned short pal_number;
+  unsigned short pal_index;
+  unsigned short pal_addr;
+
   unsigned short pal_colors[VDP_COLORS_PER_PAL];
+
+  /* determine index of last sprite */
+  if (S_vdp_sprite_count == 0)
+    return 1;
+
+  sprite_index = S_vdp_sprite_count - 1;
+  sprite_addr = sprite_index * VDP_VALS_PER_SPRITE;
+
+  /* obtain palette number (in the rom) from the sprite */
+  pal_number = S_vdp_sprites[sprite_addr + 2];
+
+  /* check if this palette has already been loaded to cram */
+  for (k = 0; k < sprite_index; k++)
+  {
+    if (pal_number == S_vdp_sprites[k * VDP_VALS_PER_SPRITE + 2])
+    {
+      pal_index = k;
+      S_vdp_sprites[sprite_addr + 4] &= 0x0FFF;
+      S_vdp_sprites[sprite_addr + 4] |= (pal_index << 12) & 0xF000;
+      return 0;
+    }
+  }
 
   /* get the file address and size in the rom */
   if (rom_lookup_file(ROM_FOLDER_PALS, pal_number, &rom_addr, &num_bytes))
@@ -130,45 +158,92 @@ int vdp_load_palette(unsigned short pal_number)
   if ((S_vdp_pal_count + 1) >= VDP_NUM_PALS)
     return 1;
 
-  pal_addr = S_vdp_pal_count * VDP_COLORS_PER_PAL;
+  pal_index = S_vdp_pal_count;
+  pal_addr = pal_index * VDP_COLORS_PER_PAL;
 
   memcpy( &S_vdp_pals[pal_addr], &pal_colors[0], 
           sizeof(unsigned short) * VDP_COLORS_PER_PAL);
 
   S_vdp_pal_count += 1;
 
+  /* save palette index in sprite and return */
+  S_vdp_sprites[sprite_addr + 4] &= 0x0FFF;
+  S_vdp_sprites[sprite_addr + 4] |= (pal_index << 12) & 0xF000;
+
   return 0;
 }
 
 /******************************************************************************/
-/* vdp_load_cells()                                                           */
+/* vdp_load_cells_from_last_sprite()                                          */
 /******************************************************************************/
-int vdp_load_cells(unsigned short cell_number, unsigned short num_cells)
+int vdp_load_cells_from_last_sprite()
 {
   int k;
 
   unsigned long  rom_addr;
   unsigned long  num_bytes;
 
-  unsigned long  cell_addr;
+  unsigned short sprite_index;
+  unsigned short sprite_addr;
 
-  if (num_cells == 0)
+  unsigned short cell_number;
+  unsigned short cell_index;
+  unsigned short cell_addr;
+
+  unsigned short num_rows;
+  unsigned short num_columns;
+  unsigned short num_frames;
+
+  unsigned short num_cells;
+
+  /* determine index of last sprite */
+  if (S_vdp_sprite_count == 0)
     return 1;
+
+  sprite_index = S_vdp_sprite_count - 1;
+  sprite_addr = sprite_index * VDP_VALS_PER_SPRITE;
+
+  /* obtain cell number (in the rom) from the sprite */
+  cell_number = S_vdp_sprites[sprite_addr + 3];
+
+  /* check if these cells have already been loaded to vram */
+  for (k = 0; k < sprite_index; k++)
+  {
+    if (cell_number == S_vdp_sprites[k * VDP_VALS_PER_SPRITE + 3])
+    {
+      cell_index = k;
+      S_vdp_sprites[sprite_addr + 4] &= 0xF000;
+      S_vdp_sprites[sprite_addr + 4] |= cell_index & 0x0FFF;
+      return 0;
+    }
+  }
 
   /* get the file address and size in the rom */
   if (rom_lookup_file(ROM_FOLDER_CELLS, cell_number, &rom_addr, &num_bytes))
     return 1;
 
+  /* compute number of cells */
+  num_columns = ((S_vdp_sprites[sprite_addr + 0] >> 6) & 0x03) + 1;
+  num_rows =    ((S_vdp_sprites[sprite_addr + 0] >> 4) & 0x03) + 1;
+  num_frames =   (S_vdp_sprites[sprite_addr + 0] & 0x0F) + 1;
+
+  num_cells = num_columns * num_rows * num_frames;
+
   /* copy cells to vram */
   if ((S_vdp_cell_count + num_cells) >= VDP_NUM_CELLS)
     return 1;
 
-  cell_addr = S_vdp_cell_count * VDP_BYTES_PER_CELL;
+  cell_index = S_vdp_cell_count;
+  cell_addr = cell_index * VDP_BYTES_PER_CELL;
 
   memcpy( &S_vdp_cells[cell_addr], &G_rom_data[rom_addr], 
           num_cells * VDP_BYTES_PER_CELL);
 
   S_vdp_cell_count += num_cells;
+
+  /* save cell index in sprite and return */
+  S_vdp_sprites[sprite_addr + 4] &= 0xF000;
+  S_vdp_sprites[sprite_addr + 4] |= cell_index & 0x0FFF;
 
   return 0;
 }
@@ -178,88 +253,50 @@ int vdp_load_cells(unsigned short cell_number, unsigned short num_cells)
 /******************************************************************************/
 int vdp_load_sprite(unsigned short sprite_number)
 {
-  int k;
-
   unsigned short val;
 
   unsigned long  rom_addr;
   unsigned long  num_bytes;
 
-  unsigned short num_rows;
-  unsigned short num_columns;
-  unsigned short num_frames;
-
-  unsigned short num_cells;
-
-  unsigned short pal_number;
-  unsigned short cell_number;
-
-  unsigned short pal_index;
-  unsigned short cell_index;
-
-  unsigned long  sprite_addr;
+  unsigned short sprite_index;
+  unsigned short sprite_addr;
 
   /* get the file address and size in the rom */
   if (rom_lookup_file(ROM_FOLDER_SPRITES, sprite_number, &rom_addr, &num_bytes))
     return 1;
 
-  /* read sprite data */
-  num_columns = ((G_rom_data[rom_addr + 9] >> 6) & 0x03) + 1;
-  num_rows =    ((G_rom_data[rom_addr + 9] >> 4) & 0x03) + 1;
-  num_frames =   (G_rom_data[rom_addr + 9] & 0x0F) + 1;
-
-  pal_number =  (G_rom_data[rom_addr + 12] << 8) & 0xFF00;
-  pal_number |=  G_rom_data[rom_addr + 13] & 0x00FF;
-
-  cell_number =  (G_rom_data[rom_addr + 14] << 8) & 0xFF00;
-  cell_number |=  G_rom_data[rom_addr + 15] & 0x00FF;
-
-  printf("Loaded sprite data!\n");
-  printf("Columns: %d, Rows: %d, Frames: %d, Pal Num: %d, Cell Num: %d\n", 
-          num_columns, num_rows, num_frames, pal_number, cell_number);
-
-  /* load the palette */
-  if (vdp_load_palette(pal_number))
-    return 1;
-
-  printf("Loaded palette!\n");
-
-  /* load cells */
-  num_cells = num_columns * num_rows * num_frames;
-
-  if (vdp_load_cells(cell_number, num_cells))
-    return 1;
-
-  printf("Loaded cells!\n");
-
-  /* for now, just set the pal/cell indices to 0 */
-  pal_index = 0;
-  cell_index = 0;
-
-  /* create sprite table entry */
+  /* copy sprite data to vram */
   if ((S_vdp_sprite_count + 1) >= VDP_NUM_SPRITES)
     return 1;
 
-  sprite_addr = S_vdp_sprite_count * VDP_VALS_PER_SPRITE;
+  sprite_index = S_vdp_sprite_count;
+  sprite_addr = sprite_index * VDP_VALS_PER_SPRITE;
 
-  /* dimensions, number of sprites */
-  val = ((num_columns - 1) << 6) & 0x00C0;
-  val |= ((num_rows - 1) << 4) & 0x0030;
-  val |= (num_frames - 1) & 0x000F;
+  val = (G_rom_data[rom_addr + 8] << 8) & 0xFF00;
+  val |= G_rom_data[rom_addr + 9] & 0x00FF;
   S_vdp_sprites[sprite_addr + 0] = val;
 
-  /* animation bit array */
-  val = 0;
+  val = (G_rom_data[rom_addr + 10] << 8) & 0xFF00;
+  val |= G_rom_data[rom_addr + 11] & 0x00FF;
   S_vdp_sprites[sprite_addr + 1] = val;
 
-  /* palette and cell indices */
-  val = (pal_index << 12) & 0xF000;
-  val |= cell_index & 0x0FFF;
+  val = (G_rom_data[rom_addr + 12] << 8) & 0xFF00;
+  val |= G_rom_data[rom_addr + 13] & 0x00FF;
   S_vdp_sprites[sprite_addr + 2] = val;
+
+  val = (G_rom_data[rom_addr + 14] << 8) & 0xFF00;
+  val |= G_rom_data[rom_addr + 15] & 0x00FF;
+  S_vdp_sprites[sprite_addr + 3] = val;
 
   S_vdp_sprite_count += 1;
 
-  printf("Loaded sprite!\n");
+  /* load the palette, if necessary */
+  if (vdp_load_palette_from_last_sprite())
+    return 1;
+
+  /* load cells, if necessary */
+  if (vdp_load_cells_from_last_sprite())
+    return 1;
 
   return 0;
 }
@@ -274,7 +311,7 @@ int vdp_draw_frame()
 
   unsigned short val;
 
-  unsigned long  sprite_addr;
+  unsigned short sprite_addr;
 
   unsigned short num_rows;
   unsigned short num_columns;
@@ -284,11 +321,11 @@ int vdp_draw_frame()
   unsigned short thing_pos_x;
   unsigned short thing_pos_y;
 
-  unsigned long  pal_addr;
-  unsigned long  pal_offset;
+  unsigned short pal_addr;
+  unsigned short pal_offset;
 
-  unsigned long  cell_addr;
-  unsigned long  cell_offset;
+  unsigned short cell_addr;
+  unsigned short cell_offset;
 
   unsigned long  pixel_addr;
   unsigned long  pixel_offset;
@@ -308,7 +345,7 @@ int vdp_draw_frame()
 
   val = S_vdp_sprites[sprite_addr + 1];
 
-  val = S_vdp_sprites[sprite_addr + 2];
+  val = S_vdp_sprites[sprite_addr + 4];
 
   pal_addr = VDP_COLORS_PER_PAL * ((val >> 12) & 0x000F);
   cell_addr = VDP_BYTES_PER_CELL * (val & 0x0FFF);
