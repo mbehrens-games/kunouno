@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
     goto cleanup_all;
   }
 
-  vdp_load_sprite(0);
+  vdp_load_sprite_file(0);
 
   /* initialize ticks */
   ticks_current = SDL_GetTicks();

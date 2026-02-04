@@ -5,16 +5,12 @@
 #ifndef ROM_H
 #define ROM_H
 
-#define ROM_MAX_BYTES (4 * 1024 * 1024) /* 4 MB */
-
-extern unsigned char G_rom_data[ROM_MAX_BYTES];
+extern unsigned char G_rom_data[];
 extern unsigned long G_rom_size;
 
 enum
 {
-  ROM_FOLDER_PALS = 0, 
-  ROM_FOLDER_CELLS, 
-  ROM_FOLDER_SPRITES, 
+  ROM_FOLDER_SPRITES = 0, 
   ROM_FOLDER_TILES, 
   ROM_NUM_FOLDERS
 };
@@ -23,8 +19,11 @@ enum
 int rom_clear();
 int rom_validate();
 
-int rom_lookup_file(int folder, unsigned short file_number, 
-                    unsigned long* rom_addr_cb, unsigned long* num_bytes_cb);
+int rom_lookup_file(int folder, unsigned short file_number);
+
+int rom_read_bytes_from_file(unsigned char* data, unsigned long num_bytes);
+
+int rom_read_words_from_file(unsigned short* data, unsigned long num_words);
 
 int rom_load(char* filename);
 

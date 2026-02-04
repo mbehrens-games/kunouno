@@ -16,7 +16,7 @@ extern unsigned short G_vdp_fb_rgb[VDP_SCREEN_SIZE];
 /* function declarations */
 int vdp_reset();
 
-int vdp_load_sprite(unsigned short sprite_number);
+int vdp_load_sprite_file(unsigned short file_number);
 
 int vdp_draw_frame();
 
