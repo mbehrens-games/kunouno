@@ -19,7 +19,7 @@ enum
 int rom_clear();
 int rom_validate();
 
-int rom_lookup_file(int folder, unsigned short file_number);
+int rom_lookup_file(int folder_index, unsigned short file_index);
 
 int rom_read_bytes_from_file(unsigned char* data, unsigned long num_bytes);
 

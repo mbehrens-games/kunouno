@@ -45,9 +45,9 @@ unsigned char G_rom_data[ROM_MAX_BYTES];
 unsigned long G_rom_size;
 
 /* file pointer variables */
-static unsigned long S_rom_file_addr;
-static unsigned long S_rom_file_offset;
-static unsigned long S_rom_file_size;
+static unsigned long S_rom_fp_addr;
+static unsigned long S_rom_fp_offset;
+static unsigned long S_rom_fp_size;
 
 /******************************************************************************/
 /* rom_clear()                                                                */
@@ -62,10 +62,10 @@ int rom_clear()
 
   G_rom_size = 0;
 
-  /* reset file pointer */
-  S_rom_file_addr = 0;
-  S_rom_file_offset = 0;
-  S_rom_file_size = 0;
+  /* reset file pointer variables */
+  S_rom_fp_addr = 0;
+  S_rom_fp_offset = 0;
+  S_rom_fp_size = 0;
 
   return 0;
 }
@@ -140,7 +140,7 @@ int rom_validate()
 /******************************************************************************/
 /* rom_lookup_file()                                                          */
 /******************************************************************************/
-int rom_lookup_file(int folder, unsigned short file_number)
+int rom_lookup_file(int folder_index, unsigned short file_index)
 {
   unsigned long folder_addr;
   unsigned long file_addr;
@@ -149,27 +149,27 @@ int rom_lookup_file(int folder, unsigned short file_number)
   unsigned short num_files;
 
   /* check input variables */
-  if (folder >= ROM_NUM_FOLDERS)
+  if (folder_index >= ROM_NUM_FOLDERS)
     return 1;
 
   /* read folder address from top level table */
-  ROM_READ_24BE(folder_addr, ROM_FILE_ADDR_LOC(folder))
+  ROM_READ_24BE(folder_addr, ROM_FILE_ADDR_LOC(folder_index))
 
   /* read number of files */
   ROM_READ_16BE(num_files, folder_addr)
 
   /* make sure the index is valid */
-  if (file_number >= num_files) 
+  if (file_index >= num_files) 
     return 1;
 
   /* get file address and size */
-  ROM_READ_24BE(file_addr, folder_addr + ROM_FILE_ADDR_LOC(file_number))
-  ROM_READ_24BE(file_size, folder_addr + ROM_FILE_SIZE_LOC(file_number))
+  ROM_READ_24BE(file_addr, folder_addr + ROM_FILE_ADDR_LOC(file_index))
+  ROM_READ_24BE(file_size, folder_addr + ROM_FILE_SIZE_LOC(file_index))
 
   /* set values of file pointer variables */
-  S_rom_file_addr = folder_addr + file_addr;
-  S_rom_file_offset = 0;
-  S_rom_file_size = file_size;
+  S_rom_fp_addr = folder_addr + file_addr;
+  S_rom_fp_offset = 0;
+  S_rom_fp_size = file_size;
 
   return 0;
 }
@@ -180,27 +180,29 @@ int rom_lookup_file(int folder, unsigned short file_number)
 int rom_read_bytes_from_file(unsigned char* data, unsigned long num_bytes)
 {
   /* check input variables and file pointer variables */
-  if ((S_rom_file_addr == 0) || (S_rom_file_size == 0))
+  if ((S_rom_fp_addr == 0) || (S_rom_fp_size == 0))
     return 1;
 
-  if (S_rom_file_offset == S_rom_file_size)
+  if (S_rom_fp_offset == S_rom_fp_size)
     return 1;
 
-  if ((S_rom_file_offset + num_bytes) > S_rom_file_size)
+  if ((S_rom_fp_offset + num_bytes) > S_rom_fp_size)
     return 1;
 
   if (data == NULL)
     return 1;
 
+  if (num_bytes == 0)
+    return 0;
+
   /* read the bytes */
-  if (num_bytes > 0)
-    memcpy(data, &G_rom_data[S_rom_file_addr + S_rom_file_offset], num_bytes);
+  memcpy(data, &G_rom_data[S_rom_fp_addr + S_rom_fp_offset], num_bytes);
 
   /* update file pointer offset */
-  S_rom_file_offset += num_bytes;
+  S_rom_fp_offset += num_bytes;
 
-  if (S_rom_file_offset > S_rom_file_size)
-    S_rom_file_offset = S_rom_file_size;
+  if (S_rom_fp_offset > S_rom_fp_size)
+    S_rom_fp_offset = S_rom_fp_size;
 
   return 0;
 }
@@ -213,32 +215,32 @@ int rom_read_words_from_file(unsigned short* data, unsigned long num_words)
   unsigned long k;
 
   /* check input variables and file pointer variables */
-  if ((S_rom_file_addr == 0) || (S_rom_file_size == 0))
+  if ((S_rom_fp_addr == 0) || (S_rom_fp_size == 0))
     return 1;
 
-  if (S_rom_file_offset == S_rom_file_size)
+  if (S_rom_fp_offset == S_rom_fp_size)
     return 1;
 
-  if ((S_rom_file_offset + (2 * num_words)) > S_rom_file_size)
+  if ((S_rom_fp_offset + (2 * num_words)) > S_rom_fp_size)
     return 1;
 
   if (data == NULL)
     return 1;
 
+  if (num_words == 0)
+    return 0;
+
   /* read the words */
-  if (num_words > 0)
+  for (k = 0; k < num_words; k++)
   {
-    for (k = 0; k < num_words; k++)
-    {
-      ROM_READ_16BE(data[k], S_rom_file_addr + S_rom_file_offset + 2 * k)
-    }
+    ROM_READ_16BE(data[k], S_rom_fp_addr + S_rom_fp_offset + 2 * k)
   }
 
   /* update file pointer offset */
-  S_rom_file_offset += 2 * num_words;
+  S_rom_fp_offset += 2 * num_words;
 
-  if (S_rom_file_offset > S_rom_file_size)
-    S_rom_file_offset = S_rom_file_size;
+  if (S_rom_fp_offset > S_rom_fp_size)
+    S_rom_fp_offset = S_rom_fp_size;
 
   return 0;
 }
