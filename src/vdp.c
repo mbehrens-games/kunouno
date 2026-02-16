@@ -35,11 +35,6 @@ static unsigned char S_vdp_BG2_cells[VDP_VRAM_SIZE];
 static unsigned char S_vdp_SP1_cells[VDP_VRAM_SIZE];
 static unsigned char S_vdp_SP2_cells[VDP_VRAM_SIZE];
 
-static unsigned short S_vdp_BG1_num_cells;
-static unsigned short S_vdp_BG2_num_cells;
-static unsigned short S_vdp_SP1_num_cells;
-static unsigned short S_vdp_SP2_num_cells;
-
 /* nametables */
 #define VDP_NAME_ENTRY_SIZE 2
 #define VDP_NAME_TABLE_SIZE (VDP_NAME_ENTRY_SIZE * VDP_MAX_CELLS)
@@ -49,12 +44,6 @@ static unsigned short S_vdp_BG2_tiles[VDP_NAME_TABLE_SIZE];
 
 static unsigned short S_vdp_SP1_sprites[VDP_NAME_TABLE_SIZE];
 static unsigned short S_vdp_SP2_sprites[VDP_NAME_TABLE_SIZE];
-
-static unsigned short S_vdp_BG1_num_tiles;
-static unsigned short S_vdp_BG2_num_tiles;
-
-static unsigned short S_vdp_SP1_num_sprites;
-static unsigned short S_vdp_SP2_num_sprites;
 
 /* registers */
 
@@ -98,11 +87,6 @@ int vdp_reset()
     S_vdp_SP2_cells[k] = 0x00;
   }
 
-  S_vdp_BG1_num_cells = 0;
-  S_vdp_BG2_num_cells = 0;
-  S_vdp_SP1_num_cells = 0;
-  S_vdp_SP2_num_cells = 0;
-
   /* nametables */
   for (k = 0; k < VDP_NAME_TABLE_SIZE; k++)
   {
@@ -110,17 +94,11 @@ int vdp_reset()
     S_vdp_BG2_tiles[k] = 0x0000;
   }
 
-  S_vdp_BG1_num_tiles = 0;
-  S_vdp_BG2_num_tiles = 0;
-
   for (k = 0; k < VDP_NAME_TABLE_SIZE; k++)
   {
     S_vdp_SP1_sprites[k] = 0x0000;
     S_vdp_SP2_sprites[k] = 0x0000;
   }
-
-  S_vdp_SP1_num_sprites = 0;
-  S_vdp_SP2_num_sprites = 0;
 
   /* layers */
   for (k = 0; k < VDP_LAYER_SIZE; k++)
@@ -135,34 +113,18 @@ int vdp_reset()
 /******************************************************************************/
 /* vdp_load_sprite_file()                                                     */
 /******************************************************************************/
-int vdp_load_sprite_file(unsigned short file_number)
+int vdp_load_sprite_file(unsigned short file_index)
 {
-  /* lookup file */
-  if (rom_lookup_file(ROM_FOLDER_SPRITES, file_number))
-    return 1;
-
   /* palette */
-  if (rom_read_words_from_file(&S_vdp_SP1_palette[0], VDP_COLORS_PER_PAL))
+  if (rom_read_file_words(file_index + 0, &S_vdp_SP1_palette[0], VDP_COLORS_PER_PAL))
     return 1;
 
-  /* uncompressed size, compressed size, then the nametable */
-  if (rom_read_words_from_file(&S_vdp_SP1_num_sprites, 1))
+  /* nametable */
+  if (rom_read_file_words(file_index + 1, &S_vdp_SP1_sprites[0], VDP_NAME_TABLE_SIZE))
     return 1;
 
-  if (rom_read_words_from_file(&S_vdp_SP1_num_sprites, 1))
-    return 1;
-
-  if (rom_read_words_from_file(&S_vdp_SP1_sprites[0], S_vdp_SP1_num_sprites * VDP_NAME_ENTRY_SIZE))
-    return 1;
-
-  /* uncompressed size, compressed size, then the cells */
-  if (rom_read_words_from_file(&S_vdp_SP1_num_cells, 1))
-    return 1;
-
-  if (rom_read_words_from_file(&S_vdp_SP1_num_cells, 1))
-    return 1;
-
-  if (rom_read_bytes_from_file(&S_vdp_SP1_cells[0], S_vdp_SP1_num_cells * VDP_BYTES_PER_CELL))
+  /* cells */
+  if (rom_read_file_bytes(file_index + 2, &S_vdp_SP1_cells[0], VDP_VRAM_SIZE))
     return 1;
 
   return 0;
