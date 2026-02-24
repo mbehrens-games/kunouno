@@ -309,7 +309,7 @@ int rom_load(char* filename)
   }
 
   /* read rom data */
-  if (fread(&G_rom_data[0], sizeof(unsigned char), rom_bytes, fp) < rom_bytes)
+  if (fread(G_rom_data, sizeof(unsigned char), rom_bytes, fp) < rom_bytes)
     return 1;
 
   G_rom_size = rom_bytes;

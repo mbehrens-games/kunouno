@@ -116,15 +116,15 @@ int vdp_reset()
 int vdp_load_sprite_file(unsigned short file_index)
 {
   /* palette */
-  if (rom_read_file_words(file_index + 0, &S_vdp_SP1_palette[0], VDP_COLORS_PER_PAL))
+  if (rom_read_file_words(file_index + 0, S_vdp_SP1_palette, VDP_COLORS_PER_PAL))
     return 1;
 
   /* nametable */
-  if (rom_read_file_words(file_index + 1, &S_vdp_SP1_sprites[0], VDP_NAME_TABLE_SIZE))
+  if (rom_read_file_words(file_index + 1, S_vdp_SP1_sprites, VDP_NAME_TABLE_SIZE))
     return 1;
 
   /* cells */
-  if (rom_read_file_bytes(file_index + 2, &S_vdp_SP1_cells[0], VDP_VRAM_SIZE))
+  if (rom_read_file_bytes(file_index + 2, S_vdp_SP1_cells, VDP_VRAM_SIZE))
     return 1;
 
   return 0;
