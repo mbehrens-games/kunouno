@@ -15,8 +15,6 @@
 /*    a) chunk address (3 bytes)              */
 /*    b) chunk size (3 bytes)                 */
 
-#define ROM_MAX_CHUNKS 65535
-
 #define ROM_CHUNK_TABLE_COUNT_BYTES  2
 
 #define ROM_CHUNK_ENTRY_ADDR_OFFSET  0

@@ -16,7 +16,7 @@ extern unsigned short G_vdp_fb_rgb[VDP_SCREEN_SIZE];
 /* function declarations */
 int vdp_reset();
 
-int vdp_load_sprite_file(unsigned short chunk_index);
+int vdp_load_rom_chunks();
 
 int vdp_draw_frame();
 
