@@ -8,19 +8,20 @@
 
 #include "vdp.h"
 
-#include "rom.h"
-
 /* framebuffer */
 unsigned short G_vdp_fb_rgb[VDP_SCREEN_SIZE];
 
 /* nametable */
-unsigned short G_vdp_entries[VDP_NAMETABLE_SIZE];
+unsigned short G_vdp_nametable_buf[VDP_NAMETABLE_SIZE];
+unsigned long  G_vdp_nametable_num_words;
 
 /* palettes */
-unsigned short G_vdp_pals[VDP_ROM_PALS_SIZE];
+unsigned short G_vdp_pals_buf[VDP_PALS_SIZE];
+unsigned long  G_vdp_pals_num_words;
 
-/* cells (vram) */
-unsigned char  G_vdp_cells[VDP_ROM_CELLS_SIZE];
+/* cells */
+unsigned char  G_vdp_bank_buf[VDP_BANK_SIZE];
+unsigned long  G_vdp_bank_num_bytes;
 
 /* registers (add in later!) */
 
@@ -30,15 +31,14 @@ unsigned char  G_vdp_cells[VDP_ROM_CELLS_SIZE];
 
 #define VDP_LAYER_SIZE (VDP_LAYER_W * VDP_LAYER_H)
 
-static unsigned short S_vdp_BG1_layer[VDP_LAYER_SIZE];
-static unsigned short S_vdp_BG2_layer[VDP_LAYER_SIZE];
+static unsigned short S_vdp_bg_layer[VDP_LAYER_SIZE];
 
 /******************************************************************************/
 /* vdp_reset()                                                                */
 /******************************************************************************/
 int vdp_reset()
 {
-  int k;
+  unsigned long k;
 
   /* framebuffer */
   for (k = 0; k < VDP_SCREEN_SIZE; k++)
@@ -46,22 +46,25 @@ int vdp_reset()
 
   /* nametable */
   for (k = 0; k < VDP_NAMETABLE_SIZE; k++)
-    G_vdp_entries[k] = 0x0000;
+    G_vdp_nametable_buf[k] = 0;
+
+  G_vdp_nametable_num_words = 0;
 
   /* palettes */
-  for (k = 0; k < VDP_ROM_PALS_SIZE; k++)
-    G_vdp_pals[k] = 0x0000;
+  for (k = 0; k < VDP_PALS_SIZE; k++)
+    G_vdp_pals_buf[k] = 0;
+
+  G_vdp_pals_num_words = 0;
 
   /* cells */
-  for (k = 0; k < VDP_ROM_CELLS_SIZE; k++)
-    G_vdp_cells[k] = 0x00;
+  for (k = 0; k < VDP_BANK_SIZE; k++)
+    G_vdp_bank_buf[k] = 0;
+
+  G_vdp_bank_num_bytes = 0;
 
   /* layers */
   for (k = 0; k < VDP_LAYER_SIZE; k++)
-  {
-    S_vdp_BG1_layer[k] = 0x0000;
-    S_vdp_BG2_layer[k] = 0x0000;
-  }
+    S_vdp_bg_layer[k] = 0x0000;
 
   return 0;
 }
@@ -102,27 +105,27 @@ int vdp_draw_frame()
   /* test: draw the test sprite */
   nametable_index = 0;
 
-  val = G_vdp_entries[VDP_ENTRY_SIZE * nametable_index + 0];
+  val = G_vdp_nametable_buf[VDP_ENTRY_SIZE * nametable_index + 0];
 
   pal_addr = (val & 0x00FF) * VDP_COLORS_PER_PAL;
 
-  val = G_vdp_entries[VDP_ENTRY_SIZE * nametable_index + 1];
+  val = G_vdp_nametable_buf[VDP_ENTRY_SIZE * nametable_index + 1];
 
   num_columns = ((val >> 13) & 0x0003) + 1;
   num_rows = ((val >> 11) & 0x0003) + 1;
   num_frames = ((val >> 8) & 0x0007) + 1;
 
-  val = G_vdp_entries[VDP_ENTRY_SIZE * nametable_index + 2];
+  val = G_vdp_nametable_buf[VDP_ENTRY_SIZE * nametable_index + 2];
 
   cell_addr = (val << 16) & 0x3F0000;
 
-  val = G_vdp_entries[VDP_ENTRY_SIZE * nametable_index + 3];
+  val = G_vdp_nametable_buf[VDP_ENTRY_SIZE * nametable_index + 3];
 
   cell_addr |= val & 0x00FFFF;
 
   cell_addr *= VDP_BYTES_PER_CELL;
 
-  val = G_vdp_entries[VDP_ENTRY_SIZE * nametable_index + 4];
+  val = G_vdp_nametable_buf[VDP_ENTRY_SIZE * nametable_index + 4];
 
   thing_pos_x = 128;
   thing_pos_y = 64;
@@ -144,15 +147,15 @@ int vdp_draw_frame()
 
       /* read palette offset from cell */
       if (n % 2 == 0)
-        pal_offset = (G_vdp_cells[cell_addr + cell_offset] >> 4) & 0x0F;
+        pal_offset = (G_vdp_bank_buf[cell_addr + cell_offset] >> 4) & 0x0F;
       else
-        pal_offset = G_vdp_cells[cell_addr + cell_offset] & 0x0F;
+        pal_offset = G_vdp_bank_buf[cell_addr + cell_offset] & 0x0F;
 
       /* write pixel to the frame buffer */
       if (pal_offset == 0)
         continue;
 
-      val = G_vdp_pals[pal_addr + pal_offset];
+      val = G_vdp_pals_buf[pal_addr + pal_offset];
 
       G_vdp_fb_rgb[pixel_addr + pixel_offset] = val;
     }

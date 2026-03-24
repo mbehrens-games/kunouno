@@ -51,9 +51,6 @@ int rom_load(char* filename)
 
   unsigned char buf[4];
 
-  unsigned long num_words;
-  unsigned long num_bytes;
-
   /* make sure filename is valid */
   if (filename == NULL)
     return 1;
@@ -90,47 +87,50 @@ int rom_load(char* filename)
   if (fread(buf, sizeof(unsigned char), 3, fp) < 3)
     return 1;
 
-  ROM_READ_24BE(num_words, buf)
+  ROM_READ_24BE(G_vdp_nametable_num_words, buf)
 
-  if (num_words > VDP_NAMETABLE_SIZE)
+  if (G_vdp_nametable_num_words > VDP_NAMETABLE_SIZE)
     return 1;
 
-  for (k = 0; k < num_words; k++)
+  for (k = 0; k < G_vdp_nametable_num_words; k++)
   {
     if (fread(buf, sizeof(unsigned char), 2, fp) < 2)
       return 1;
 
-    ROM_READ_16BE(G_vdp_entries[k], buf)
+    ROM_READ_16BE(G_vdp_nametable_buf[k], buf)
   }
 
   /* read vdp palettes */
   if (fread(buf, sizeof(unsigned char), 3, fp) < 3)
     return 1;
 
-  ROM_READ_24BE(num_words, buf)
+  ROM_READ_24BE(G_vdp_pals_num_words, buf)
 
-  if (num_words > VDP_ROM_PALS_SIZE)
+  if (G_vdp_pals_num_words > VDP_PALS_SIZE)
     return 1;
 
-  for (k = 0; k < num_words; k++)
+  for (k = 0; k < G_vdp_pals_num_words; k++)
   {
     if (fread(buf, sizeof(unsigned char), 2, fp) < 2)
       return 1;
 
-    ROM_READ_16BE(G_vdp_pals[k], buf)
+    ROM_READ_16BE(G_vdp_pals_buf[k], buf)
   }
 
   /* read vdp cells */
   if (fread(buf, sizeof(unsigned char), 3, fp) < 3)
     return 1;
 
-  ROM_READ_24BE(num_bytes, buf)
+  ROM_READ_24BE(G_vdp_bank_num_bytes, buf)
 
-  if (num_bytes > VDP_ROM_CELLS_SIZE)
+  if (G_vdp_bank_num_bytes > VDP_BANK_SIZE)
     return 1;
 
-  if (fread(G_vdp_cells, sizeof(unsigned char), num_bytes, fp) < num_bytes)
+  if (fread(G_vdp_bank_buf, sizeof(unsigned char), 
+            G_vdp_bank_num_bytes, fp) < G_vdp_bank_num_bytes)
+  {
     return 1;
+  }
 
   /* close the file */
   fclose(fp);
